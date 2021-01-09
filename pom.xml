@@ -27,4 +27,11 @@
         <module>v1_16_R3</module>
 		<module>dist</module>
 	</modules>
+	<repositories>
+		<!-- CodeMC -->
+		<repository>
+			<id>codemc-repo</id>
+			<url>https://repo.codemc.io/repository/nms-local/</url>
+		</repository>
+	</repositories>
 </project>
