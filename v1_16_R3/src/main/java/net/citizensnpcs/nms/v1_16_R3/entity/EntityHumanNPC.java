@@ -51,10 +51,12 @@ import net.minecraft.server.v1_16_R3.AttributeModifiable;
 import net.minecraft.server.v1_16_R3.AttributeProvider;
 import net.minecraft.server.v1_16_R3.BlockPosition;
 import net.minecraft.server.v1_16_R3.ChatComponentText;
+import net.minecraft.server.v1_16_R3.ChatModifier;
 import net.minecraft.server.v1_16_R3.DamageSource;
 import net.minecraft.server.v1_16_R3.Entity;
 import net.minecraft.server.v1_16_R3.EntityHuman;
 import net.minecraft.server.v1_16_R3.EntityPlayer;
+import net.minecraft.server.v1_16_R3.EnumChatFormat;
 import net.minecraft.server.v1_16_R3.EnumGamemode;
 import net.minecraft.server.v1_16_R3.EnumItemSlot;
 import net.minecraft.server.v1_16_R3.EnumProtocolDirection;
@@ -235,7 +237,8 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
     @Override
     public IChatBaseComponent getPlayerListName() {
         if (Setting.REMOVE_PLAYERS_FROM_PLAYER_LIST.asBoolean()) {
-            return new ChatComponentText("");
+            return new ChatComponentText("NPC-" + this.npc.getId())
+                    .setChatModifier(ChatModifier.a.setColor(EnumChatFormat.DARK_GRAY));
         }
         return super.getPlayerListName();
     }
