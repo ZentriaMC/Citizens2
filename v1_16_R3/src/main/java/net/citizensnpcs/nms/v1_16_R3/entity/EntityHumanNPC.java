@@ -79,12 +79,14 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
     private PlayerControllerJump controllerJump;
     private PlayerControllerLook controllerLook;
     private PlayerControllerMove controllerMove;
+    private final Map<EnumItemSlot, ItemStack> equipmentCache = Maps.newEnumMap(EnumItemSlot.class);
     private int jumpTicks = 0;
     private PlayerNavigation navigation;
     private final CitizensNPC npc;
     private final Location packetLocationCache = new Location(null, 0, 0, 0);
     private PlayerlistTracker playerlistTracker;
     private final SkinPacketTracker skinTracker;
+
     private int updateCounter = 0;
 
     public EntityHumanNPC(MinecraftServer minecraftServer, WorldServer world, GameProfile gameProfile,
@@ -481,7 +483,18 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
     }
 
     private void updatePackets(boolean navigating) {
-        if (updateCounter++ <= Setting.PACKET_UPDATE_DELAY.asInt())
+        updateCounter++;
+        boolean itemChanged = false;
+        for (EnumItemSlot slot : EnumItemSlot.values()) {
+            ItemStack equipment = getEquipment(slot);
+            ItemStack cache = equipmentCache.get(slot);
+            if (!(cache == null && equipment == null)
+                    && (cache == null ^ equipment == null || !ItemStack.equals(cache, equipment))) {
+                itemChanged = true;
+            }
+            equipmentCache.put(slot, equipment);
+        }
+        if (updateCounter++ <= Setting.PACKET_UPDATE_DELAY.asInt() && !itemChanged)
             return;
 
         updateCounter = 0;

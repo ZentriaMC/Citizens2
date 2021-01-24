@@ -1,9 +1,8 @@
 package net.citizensnpcs.trait;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
 
+import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
@@ -16,6 +15,7 @@ import net.citizensnpcs.Settings.Setting;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.command.CommandConfigurable;
 import net.citizensnpcs.api.command.CommandContext;
+import net.citizensnpcs.api.event.NPCLookCloseChangeTargetEvent;
 import net.citizensnpcs.api.persistence.Persist;
 import net.citizensnpcs.api.trait.Trait;
 import net.citizensnpcs.api.trait.TraitName;
@@ -69,30 +69,28 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
      * Finds a new look-close target
      */
     public void findNewTarget() {
-        List<Player> nearby = new ArrayList<>();
+        double min = range * range;
+        Player old = lookingAt;
         for (Entity entity : npc.getEntity().getNearbyEntities(range, range, range)) {
             if (!(entity instanceof Player))
                 continue;
-
             Player player = (Player) entity;
-            if (CitizensAPI.getNPCRegistry().getNPC(entity) != null || player.getGameMode() == GameMode.SPECTATOR
-                    || entity.getLocation(CACHE_LOCATION).getWorld() != NPC_LOCATION.getWorld()
-                    || player.hasPotionEffect(PotionEffectType.INVISIBILITY) || isPluginVanished((Player) entity))
+            Location location = player.getLocation(CACHE_LOCATION);
+            if (location.getWorld() != NPC_LOCATION.getWorld())
                 continue;
-            nearby.add(player);
+            double dist = location.distanceSquared(NPC_LOCATION);
+            if (dist > min || CitizensAPI.getNPCRegistry().getNPC(entity) != null || isInvisible(player))
+                continue;
+            min = dist;
+            lookingAt = player;
         }
-
-        if (!nearby.isEmpty()) {
-            nearby.sort((o1, o2) -> {
-                Location l1 = o1.getLocation(CACHE_LOCATION);
-                Location l2 = o2.getLocation(CACHE_LOCATION2);
-                if (!NPC_LOCATION.getWorld().equals(l1.getWorld()) || !NPC_LOCATION.getWorld().equals(l2.getWorld())) {
-                    return -1;
-                }
-                return Double.compare(l1.distanceSquared(NPC_LOCATION), l2.distanceSquared(NPC_LOCATION));
-            });
-
-            lookingAt = nearby.get(0);
+        if (old != lookingAt) {
+            NPCLookCloseChangeTargetEvent event = new NPCLookCloseChangeTargetEvent(npc, old, lookingAt);
+            Bukkit.getPluginManager().callEvent(event);
+            if (lookingAt != event.getNewTarget() && event.getNewTarget() != null && !isValid(event.getNewTarget())) {
+                return;
+            }
+            lookingAt = event.getNewTarget();
         }
     }
 
@@ -116,18 +114,13 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
         return lookingAt;
     }
 
-    private boolean hasInvalidTarget() {
-        if (lookingAt == null)
-            return true;
-        if (!lookingAt.isOnline() || lookingAt.getWorld() != npc.getEntity().getWorld()
-                || lookingAt.getLocation(PLAYER_LOCATION).distanceSquared(NPC_LOCATION) > range * range) {
-            lookingAt = null;
-        }
-        return lookingAt == null;
-    }
-
     private boolean isEqual(float[] array) {
         return Math.abs(array[0] - array[1]) < 0.001;
+    }
+
+    private boolean isInvisible(Player player) {
+        return player.getGameMode() == GameMode.SPECTATOR || player.hasPotionEffect(PotionEffectType.INVISIBILITY)
+                || isPluginVanished(player);
     }
 
     private boolean isPluginVanished(Player player) {
@@ -141,6 +134,12 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
 
     public boolean isRandomLook() {
         return enableRandomLook;
+    }
+
+    private boolean isValid(Player entity) {
+        return entity.isOnline() && entity.isValid() && entity.getWorld() == npc.getEntity().getWorld()
+                && !isInvisible(entity)
+                && entity.getLocation(PLAYER_LOCATION).distanceSquared(NPC_LOCATION) < range * range;
     }
 
     @Override
@@ -157,7 +156,13 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
 
     @Override
     public void onDespawn() {
-        lookingAt = null;
+        NPCLookCloseChangeTargetEvent event = new NPCLookCloseChangeTargetEvent(npc, lookingAt, null);
+        Bukkit.getPluginManager().callEvent(event);
+        if (event.getNewTarget() != null && isValid(event.getNewTarget())) {
+            lookingAt = event.getNewTarget();
+        } else {
+            lookingAt = null;
+        }
     }
 
     private void randomLook() {
@@ -178,7 +183,7 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
             return;
         }
         npc.getEntity().getLocation(NPC_LOCATION);
-        if (hasInvalidTarget()) {
+        if (tryInvalidateTarget()) {
             findNewTarget();
         }
         if (npc.getNavigator().isNavigating()) {
@@ -249,12 +254,26 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
         return "LookClose{" + enabled + "}";
     }
 
+    private boolean tryInvalidateTarget() {
+        if (lookingAt == null)
+            return true;
+        if (!isValid(lookingAt)) {
+            NPCLookCloseChangeTargetEvent event = new NPCLookCloseChangeTargetEvent(npc, lookingAt, null);
+            Bukkit.getPluginManager().callEvent(event);
+            if (event.getNewTarget() != null && isValid(event.getNewTarget())) {
+                lookingAt = event.getNewTarget();
+            } else {
+                lookingAt = null;
+            }
+        }
+        return lookingAt == null;
+    }
+
     public boolean useRealisticLooking() {
         return realisticLooking;
     }
 
     private static final Location CACHE_LOCATION = new Location(null, 0, 0, 0);
-    private static final Location CACHE_LOCATION2 = new Location(null, 0, 0, 0);
     private static final Location NPC_LOCATION = new Location(null, 0, 0, 0);
     private static final Location PLAYER_LOCATION = new Location(null, 0, 0, 0);
 }
