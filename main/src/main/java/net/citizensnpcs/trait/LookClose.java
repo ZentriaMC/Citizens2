@@ -49,14 +49,18 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
         super("lookclose");
     }
 
+    private boolean canSee(Player player) {
+        return realisticLooking && npc.getEntity() instanceof LivingEntity
+                ? ((LivingEntity) npc.getEntity()).hasLineOfSight(player)
+                : player != null && player.isValid();
+    }
+
     /**
      * Returns whether the target can be seen. Will use realistic line of sight if {@link #setRealisticLooking(boolean)}
      * is true.
      */
     public boolean canSeeTarget() {
-        return realisticLooking && npc.getEntity() instanceof LivingEntity
-                ? ((LivingEntity) npc.getEntity()).hasLineOfSight(lookingAt)
-                : lookingAt != null && lookingAt.isValid();
+        return canSee(lookingAt);
     }
 
     @Override
@@ -120,7 +124,7 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
 
     private boolean isInvisible(Player player) {
         return player.getGameMode() == GameMode.SPECTATOR || player.hasPotionEffect(PotionEffectType.INVISIBILITY)
-                || isPluginVanished(player);
+                || isPluginVanished(player) || !canSee(player);
     }
 
     private boolean isPluginVanished(Player player) {
@@ -138,8 +142,8 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
 
     private boolean isValid(Player entity) {
         return entity.isOnline() && entity.isValid() && entity.getWorld() == npc.getEntity().getWorld()
-                && !isInvisible(entity)
-                && entity.getLocation(PLAYER_LOCATION).distanceSquared(NPC_LOCATION) < range * range;
+                && entity.getLocation(PLAYER_LOCATION).distanceSquared(NPC_LOCATION) < range * range
+                && !isInvisible(entity);
     }
 
     @Override
@@ -193,12 +197,12 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
             t = randomLookDelay;
         }
         t--;
-        if (lookingAt != null && canSeeTarget()) {
-            Util.faceEntity(npc.getEntity(), lookingAt);
-            if (npc.getEntity().getType().name().equals("SHULKER")) {
-                NMS.setPeekShulker(npc.getEntity(), 100 - (int) Math
-                        .floor(npc.getStoredLocation().distanceSquared(lookingAt.getLocation(PLAYER_LOCATION))));
-            }
+        if (lookingAt == null)
+            return;
+        Util.faceEntity(npc.getEntity(), lookingAt);
+        if (npc.getEntity().getType().name().equals("SHULKER")) {
+            NMS.setPeekShulker(npc.getEntity(), 100 - (int) Math
+                    .floor(npc.getStoredLocation().distanceSquared(lookingAt.getLocation(PLAYER_LOCATION))));
         }
     }
 
