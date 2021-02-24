@@ -9,8 +9,13 @@ import java.util.Map;
 import java.util.Set;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.permissions.PermissionAttachment;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
@@ -26,10 +31,12 @@ import com.google.common.io.ByteStreams;
 import net.citizensnpcs.Settings.Setting;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.event.NPCCommandDispatchEvent;
+import net.citizensnpcs.api.gui.InventoryMenuPage;
+import net.citizensnpcs.api.gui.Menu;
+import net.citizensnpcs.api.gui.MenuContext;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.api.persistence.DelegatePersistence;
 import net.citizensnpcs.api.persistence.Persist;
-import net.citizensnpcs.api.persistence.PersistenceLoader;
 import net.citizensnpcs.api.persistence.Persister;
 import net.citizensnpcs.api.trait.Trait;
 import net.citizensnpcs.api.trait.TraitName;
@@ -47,8 +54,7 @@ public class CommandTrait extends Trait {
     @Persist
     @DelegatePersistence(NPCCommandPersister.class)
     private final Map<String, NPCCommand> commands = Maps.newHashMap();
-    @Persist
-    @DelegatePersistence(PlayerNPCCommandPersister.class)
+    @Persist(reify = true)
     private final Map<String, PlayerNPCCommand> cooldowns = Maps.newHashMap();
     @Persist
     private double cost = -1;
@@ -57,6 +63,8 @@ public class CommandTrait extends Trait {
     private ExecutionMode executionMode = ExecutionMode.LINEAR;
     @Persist
     private final Map<String, Long> globalCooldowns = Maps.newHashMap();
+    @Persist
+    private List<ItemStack> itemRequirements = Lists.newArrayList();
     @Persist
     private final List<String> temporaryPermissions = Lists.newArrayList();
 
@@ -85,6 +93,25 @@ public class CommandTrait extends Trait {
                 }
             } catch (NoClassDefFoundError e) {
                 Messaging.severe("Unable to find Vault when checking command cost - is it installed?");
+            }
+        }
+        if (itemRequirements.size() > 0) {
+            List<ItemStack> req = Lists.newArrayList(itemRequirements);
+            Inventory tempInventory = Bukkit.createInventory(null, 54);
+            for (int i = 0; i < player.getInventory().getSize(); i++) {
+                tempInventory.setItem(i, player.getInventory().getItem(i));
+            }
+            for (ItemStack stack : req) {
+                if (tempInventory.containsAtLeast(stack, stack.getAmount())) {
+                    tempInventory.removeItem(stack);
+                } else {
+                    sendErrorMessage(player, CommandTraitMessages.MISSING_ITEM, Util.prettyEnum(stack.getType()),
+                            stack.getAmount());
+                    return false;
+                }
+            }
+            for (int i = 0; i < player.getInventory().getSize(); i++) {
+                player.getInventory().setItem(i, tempInventory.getItem(i));
             }
         }
         return true;
@@ -277,6 +304,7 @@ public class CommandTrait extends Trait {
 
     private enum CommandTraitMessages {
         MAXIMUM_TIMES_USED(Setting.NPC_COMMAND_MAXIMUM_TIMES_USED_MESSAGE),
+        MISSING_ITEM(Setting.NPC_COMMAND_MISSING_ITEM_MESSAGE),
         MISSING_MONEY(Setting.NPC_COMMAND_NOT_ENOUGH_MONEY_MESSAGE),
         NO_PERMISSION(Setting.NPC_COMMAND_NO_PERMISSION_MESSAGE),
         ON_COOLDOWN(Setting.NPC_COMMAND_ON_COOLDOWN_MESSAGE),
@@ -299,6 +327,46 @@ public class CommandTrait extends Trait {
         BOTH,
         LEFT,
         RIGHT;
+    }
+
+    @Menu(title = "Drag items for requirements", type = InventoryType.CHEST, dimensions = { 5, 9 })
+    public static class ItemRequirementGUI extends InventoryMenuPage {
+        private Inventory inventory;
+        private int taskId;
+        private CommandTrait trait;
+
+        private ItemRequirementGUI() {
+            throw new UnsupportedOperationException();
+        }
+
+        public ItemRequirementGUI(CommandTrait trait) {
+            this.trait = trait;
+        }
+
+        @Override
+        public void initialise(MenuContext ctx) {
+            this.taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(CitizensAPI.getPlugin(), this, 0, 1);
+            this.inventory = ctx.getInventory();
+            for (ItemStack stack : trait.itemRequirements) {
+                inventory.addItem(stack.clone());
+            }
+        }
+
+        @Override
+        public void onClose(HumanEntity player) {
+            Bukkit.getScheduler().cancelTask(taskId);
+        }
+
+        @Override
+        public void run() {
+            List<ItemStack> requirements = Lists.newArrayList();
+            for (ItemStack stack : inventory.getContents()) {
+                if (stack != null && stack.getType() != Material.AIR) {
+                    requirements.add(stack);
+                }
+            }
+            this.trait.itemRequirements = requirements;
+        }
     }
 
     private static class NPCCommand {
@@ -527,21 +595,6 @@ public class CommandTrait extends Trait {
 
         public static boolean requiresTracking(NPCCommand command) {
             return command.cooldown > 0 || command.n > 0 || (command.perms != null && command.perms.size() > 0);
-        }
-    }
-
-    private static class PlayerNPCCommandPersister implements Persister<PlayerNPCCommand> {
-        public PlayerNPCCommandPersister() {
-        }
-
-        @Override
-        public PlayerNPCCommand create(DataKey root) {
-            return PersistenceLoader.load(PlayerNPCCommand.class, root);
-        }
-
-        @Override
-        public void save(PlayerNPCCommand instance, DataKey root) {
-            PersistenceLoader.save(instance, root);
         }
     }
 }

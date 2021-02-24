@@ -334,6 +334,7 @@ public class CitizensNPC extends AbstractNPC {
         }
 
         updateFlyableState();
+        updateCustomNameVisibility();
         updateCustomName();
 
         Messaging.debug("Spawned", getId(), "SpawnReason." + reason);
@@ -388,11 +389,7 @@ public class CitizensNPC extends AbstractNPC {
                 updateCounter = 0;
             }
 
-            String nameplateVisible = data().<Object> get(NPC.NAMEPLATE_VISIBLE_METADATA, true).toString();
-            if (requiresNameHologram()) {
-                nameplateVisible = "false";
-            }
-            getEntity().setCustomNameVisible(Boolean.parseBoolean(nameplateVisible));
+            updateCustomNameVisibility();
 
             if (isLiving) {
                 NMS.setKnockbackResistance((LivingEntity) getEntity(),
@@ -411,6 +408,14 @@ public class CitizensNPC extends AbstractNPC {
             Messaging.logTr(Messages.EXCEPTION_UPDATING_NPC, getId(), error.getMessage());
             error.printStackTrace();
         }
+    }
+
+    private void updateCustomNameVisibility() {
+        String nameplateVisible = data().<Object> get(NPC.NAMEPLATE_VISIBLE_METADATA, true).toString();
+        if (requiresNameHologram()) {
+            nameplateVisible = "false";
+        }
+        getEntity().setCustomNameVisible(Boolean.parseBoolean(nameplateVisible));
     }
 
     private void updateCustomName() {
